@@ -28,7 +28,7 @@ except:
     xgb_installed = False
 
 # Title
-st.title("🤖 AI-Driven EDA + Automative Machine Learning")
+st.title("🤖 AI-Driven EDA + Automated Machine Learning")
 st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
 
 # Upload CSV
