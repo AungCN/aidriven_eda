@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + AutoML Pro+", layout="wide")
 
 # Core Libraries
 import pandas as pd
@@ -28,7 +28,7 @@ except:
     xgb_installed = False
 
 # Title
-st.title("🤖 AI-Driven EDA + Automated Machine Learning")
+st.title("🤖 AI-Driven EDA + AutoML Pro+")
 st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
 
 # Upload CSV
@@ -146,11 +146,20 @@ if uploaded_file:
                 if problem_type == "Classification":
                     min_class_count = np.min(np.bincount(y))
                     n_splits = min(5, min_class_count)
-                    kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+                    if n_splits < 2:
+                        st.warning("⚠️ Not enough samples for cross-validation. Switching to train/test split only.")
+                        use_cv = False
+                    else:
+                        kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
                 else:
                     n_splits = min(5, len(y))
-                    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+                    if n_splits < 2:
+                        st.warning("⚠️ Not enough samples for cross-validation. Switching to train/test split only.")
+                        use_cv = False
+                    else:
+                        kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
+            if use_cv:
                 if problem_type == "Classification":
                     scores = cross_val_score(model, X_scaled, y, scoring='accuracy', cv=kfold)
                 else:
