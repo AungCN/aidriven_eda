@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + AutoML Pro+", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning Models", layout="wide")
 
 # Core Libraries
 import pandas as pd
@@ -28,7 +28,7 @@ except:
     xgb_installed = False
 
 # Title
-st.title("🤖 AI-Driven EDA + AutoML Pro+")
+st.title("🤖 AI-Driven EDA + Automated ML Models")
 st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
 
 # Upload CSV
