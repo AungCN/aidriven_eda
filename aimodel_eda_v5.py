@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + AutoML Pro+", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning", layout="wide")
 
 # Core Libraries
 import pandas as pd
