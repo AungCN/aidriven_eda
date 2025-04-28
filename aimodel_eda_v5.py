@@ -266,4 +266,6 @@ if uploaded_file:
                 sns.barplot(x='Importance', y='Feature', data=feat_df, ax=ax)
                 st.pyplot(fig)
                 plt.close(fig)
+                except Exception as e:
+                st.warning(f"Feature importance plotting failed: {e}")
 #end
