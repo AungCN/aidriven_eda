@@ -1,66 +1,9 @@
-# -*- coding: utf-8 -*-
-import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
-
-# Core Libraries
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# ML Models
-from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, KFold
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.feature_selection import SelectKBest, f_classif, f_regression
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, mean_squared_error, classification_report, confusion_matrix, r2_score, ConfusionMatrixDisplay
-
-# Optional XGBoost
-try:
-    from xgboost import XGBClassifier, XGBRegressor
-    xgb_installed = True
-except ImportError:
-    xgb_installed = False
-
-# Title
-st.title("🤖 AI-Driven EDA + Automated Machine Learning")
-st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
-
-# Upload CSV
-uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-
-    # EDA
-    st.subheader("📊 Exploratory Data Analysis")
-    st.write(df.head())
-
-    if st.checkbox("Show Shape", key="shape"):
-        st.write(f"Dataset Shape: {df.shape}")
-
-    if st.checkbox("Show Summary Stats", key="summary"):
-        st.write(df.describe())
-
-    if st.checkbox("Show Missing Values", key="missing"):
-        missing = df.isnull().sum()
-        st.write(missing[missing > 0])
-
-    if st.checkbox("Correlation Heatmap (Numerical Only)", key="heatmap"):
-        corr = df.select_dtypes(include=np.number).corr()
-        fig, ax = plt.subplots(figsize=(10,8))
-        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
-        plt.close(fig)
-
-    # Target Variable
+# Target Variable
     st.sidebar.header("🏷️ Define Target Variable")
     target_col = st.sidebar.selectbox("Select Target Column", df.columns)
 
     # Problem Type
-    problem_type = st.sidebar.radio("Problem Type", ("Classification", "Regression"))
+    problem_type = st.sidebar.radio("Problem Type", ("Classification", "Regression"), index=1)  # Default to Regression
 
     # Feature Selection
     features = st.sidebar.multiselect(
@@ -73,7 +16,7 @@ if uploaded_file:
     if auto_feature_select:
         num_features = st.sidebar.slider("Number of Top Features", 1, len(features), min(10, len(features)), key="num_features")
 
-   # Preprocessing
+    # Preprocessing
     X = df[features].copy()
     y = df[target_col]
 
@@ -85,28 +28,12 @@ if uploaded_file:
             X[col] = X[col].fillna(X[col].mode()[0])
 
     if y.isnull().sum() > 0:
-        if problem_type == "Regression":
-            y = y.fillna(y.mean())
-        else:
-            y = y.fillna(y.mode()[0])
+        y = y.fillna(y.mean()) # Always fill with mean for regression
 
     y = pd.to_numeric(y, errors='coerce')
     if y.isnull().sum() > 0:
-        if problem_type == "Regression":
-            y = y.fillna(y.mean())
-        else:
-            y = y.fillna(y.mode()[0])
-    y = y.astype(float)
-
-    # 🌟 Remap Target Variable for Classification 🌟
-    if problem_type == "Classification":
-        unique_classes = sorted(y.unique())  # Get unique classes in sorted order
-        class_mapping = {cls: i for i, cls in enumerate(unique_classes)}  # Create a mapping
-        y = y.map(class_mapping)  # Apply the mapping
-        y = y.astype(int)  # Ensure y is integers
-        st.write("Class Mapping:", class_mapping)  # Debug: See the mapping
-    else:
-        y = y.astype(float) # Ensure y is float for regression
+        y = y.fillna(y.mean())
+    y = y.astype(float)  # Ensure y is float for regression
 
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
@@ -123,24 +50,15 @@ if uploaded_file:
     test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20, key="test_size")
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size/100, random_state=42)
 
-    # ✅ Cross-Validation Handling
+    # ✅ Smart Cross Validation Handling
     use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True, key="use_cv")
     if use_cv:
-        if problem_type == "Classification":
-            min_class_count = np.min(np.bincount(y))
-            n_splits = min(5, min_class_count)
-            if n_splits < 2:
-                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
-                use_cv = False
-            else:
-                kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        n_splits = min(5, len(y)) # Use KFold for regression
+        if n_splits < 2:
+            st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
+            use_cv = False
         else:
-            n_splits = min(5, len(y))
-            if n_splits < 2:
-                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
-                use_cv = False
-            else:
-                kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+            kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
@@ -188,15 +106,6 @@ if uploaded_file:
             if 'XGBoost' in model_name and xgb_installed:
                 model.set_params(learning_rate=xgb_learning_rate)
 
-            # 🔥 Handle XGBoost float32 requirement
-            if 'XGBoost' in model_name:
-                X_train_ = np.array(X_train, dtype=np.float32)
-                X_test_ = np.array(X_test, dtype=np.float32)
-                y_train_ = np.array(y_train, dtype=np.float32 if problem_type == "Regression" else np.int32)
-                y_test_ = np.array(y_test, dtype=np.float32 if problem_type == "Regression" else np.int32)
-            else:
-                X_train_, X_test_, y_train_, y_test_ = X_train, X_test, y_train, y_test
-
             if use_cv:
                 if problem_type == "Classification":
                     scores = cross_val_score(model, X_scaled, y, scoring='accuracy', cv=kfold)
@@ -204,12 +113,12 @@ if uploaded_file:
                     scores = cross_val_score(model, X_scaled, y, scoring='neg_root_mean_squared_error', cv=kfold)
                 score = np.mean(scores)
             else:
-                model.fit(X_train_, y_train_)
-                preds = model.predict(X_test_)
+                model.fit(X_train, y_train)
+                preds = model.predict(X_test)
                 if problem_type == "Classification":
-                    score = accuracy_score(y_test_, preds)
+                    score = accuracy_score(y_test, preds)
                 else:
-                    score = np.sqrt(mean_squared_error(y_test_, preds))
+                    score = np.sqrt(mean_squared_error(y_test, preds))
 
             leaderboard.append({"Model": model_name, "Score": score})
 
@@ -230,34 +139,32 @@ if uploaded_file:
         if 'XGBoost' in best_model_name and xgb_installed:
             best_model.set_params(learning_rate=xgb_learning_rate)
 
-        # 🔥 Handle data types again
-        if 'XGBoost' in best_model_name:
-            X_train_ = np.array(X_train, dtype=np.float32)
-            X_test_ = np.array(X_test, dtype=np.float32)
-            y_train_ = np.array(y_train, dtype=np.float32 if problem_type == "Regression" else np.int32)
-            y_test_ = np.array(y_test, dtype=np.float32 if problem_type == "Regression" else np.int32)
-        else:
-            X_train_, X_test_, y_train_, y_test_ = X_train, X_test, y_train, y_test
+        # 🔥 Stronger Special Handling for XGBoost before fitting
+        if 'XGBoost' in best_model_name and xgb_installed:
+            X_train = np.nan_to_num(np.array(X_train), nan=0.0, posinf=0.0, neginf=0.0)
+            X_test = np.nan_to_num(np.array(X_test), nan=0.0, posinf=0.0, neginf=0.0)
+            y_train = np.nan_to_num(np.array(y_train).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
+            y_test = np.nan_to_num(np.array(y_test).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
 
-        best_model.fit(X_train_, y_train_)
-        preds = best_model.predict(X_test_)
+        best_model.fit(X_train, y_train)
+        preds = best_model.predict(X_test)
 
         if problem_type == "Classification":
             st.subheader("🔢 Confusion Matrix")
             fig, ax = plt.subplots()
-            cm = confusion_matrix(y_test_, preds)
+            cm = confusion_matrix(y_test, preds)
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
             disp.plot(cmap='Blues', ax=ax)
             st.pyplot(fig)
             plt.close(fig)
 
             st.subheader("🔧 Classification Report")
-            report = classification_report(y_test_, preds, output_dict=True)
+            report = classification_report(y_test, preds, output_dict=True)
             st.dataframe(pd.DataFrame(report).transpose())
         else:
             st.subheader("📈 Regression Metrics")
-            rmse = np.sqrt(mean_squared_error(y_test_, preds))
-            r2 = r2_score(y_test_, preds)
+            rmse = np.sqrt(mean_squared_error(y_test, preds))
+            r2 = r2_score(y_test, preds)
             st.write(f"**RMSE:** {rmse:.4f}")
             st.write(f"**R² Score:** {r2:.4f}")
 
@@ -274,5 +181,5 @@ if uploaded_file:
                 sns.barplot(x='Importance', y='Feature', data=feat_df, ax=ax)
                 st.pyplot(fig)
                 plt.close(fig)
-            except Exception as e:
-                st.warning(f"Feature importance plotting failed: {e}")
+
+# END
