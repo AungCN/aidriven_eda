@@ -119,6 +119,27 @@ if uploaded_file:
     test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20)
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size/100, random_state=42)
 
+    # ✅ Smart Cross Validation Handling
+    use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True)
+
+    if use_cv:
+        if problem_type == "Classification":
+            min_class_count = np.min(np.bincount(y.astype(int)))
+            n_splits = min(5, min_class_count)
+            if n_splits < 2:
+                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
+                use_cv = False
+            else:
+                kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        else:
+            n_splits = min(5, len(y))
+            if n_splits < 2:
+                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
+                use_cv = False
+            else:
+                kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
 
