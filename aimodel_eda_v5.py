@@ -131,8 +131,6 @@ if uploaded_file:
             else:
                 kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    # (your current code above remains unchanged)
-
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
 
@@ -212,12 +210,12 @@ if uploaded_file:
         if 'XGBoost' in best_model_name and xgb_installed:
             best_model.set_params(learning_rate=xgb_learning_rate)
 
-        # 🔥 Special Handling for XGBoost before fitting
+        # 🔥 Stronger Special Handling for XGBoost before fitting
         if 'XGBoost' in best_model_name and xgb_installed:
-            X_train = np.nan_to_num(X_train, nan=0.0, posinf=0.0, neginf=0.0)
-            X_test = np.nan_to_num(X_test, nan=0.0, posinf=0.0, neginf=0.0)
-            y_train = np.nan_to_num(y_train, nan=0.0, posinf=0.0, neginf=0.0)
-            y_test = np.nan_to_num(y_test, nan=0.0, posinf=0.0, neginf=0.0)
+            X_train = np.nan_to_num(np.array(X_train), nan=0.0, posinf=0.0, neginf=0.0)
+            X_test = np.nan_to_num(np.array(X_test), nan=0.0, posinf=0.0, neginf=0.0)
+            y_train = np.nan_to_num(np.array(y_train).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
+            y_test = np.nan_to_num(np.array(y_test).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
 
         best_model.fit(X_train, y_train)
         preds = best_model.predict(X_test)
@@ -258,4 +256,5 @@ if uploaded_file:
                 st.warning(f"Feature importance plotting failed: {e}")
 
 # END
+
 
