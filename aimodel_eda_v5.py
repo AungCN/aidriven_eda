@@ -1,9 +1,71 @@
-# Target Variable
+# -*- coding: utf-8 -*-
+import streamlit as st
+st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
+# Core Libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# ML Models
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, KFold
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.feature_selection import SelectKBest, f_classif, f_regression
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, mean_squared_error, classification_report, confusion_matrix, r2_score, ConfusionMatrixDisplay
+
+# Optional XGBoost
+try:
+    from xgboost import XGBClassifier, XGBRegressor
+    xgb_installed = True
+except:
+    xgb_installed = False
+
+# Title
+st.title("🤖 AI-Driven EDA + Automated Machine Learning")
+st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
+
+# Upload CSV
+uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+
+    # EDA
+    st.subheader("📊 Exploratory Data Analysis")
+    st.write(df.head())
+
+    if st.checkbox("Show Shape", key="shape"):
+        st.write(f"Dataset Shape: {df.shape}")
+
+    if st.checkbox("Show Summary Stats", key="summary"):
+        st.write(df.describe())
+
+    if st.checkbox("Show Missing Values", key="missing"):
+        missing = df.isnull().sum()
+        st.write(missing[missing > 0])
+
+    if st.checkbox("Correlation Heatmap (Numerical Only)", key="heatmap"):
+        corr = df.select_dtypes(include=np.number).corr()
+        fig, ax = plt.subplots(figsize=(10,8))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+        plt.close(fig)
+
+    # Target Variable
     st.sidebar.header("🏷️ Define Target Variable")
     target_col = st.sidebar.selectbox("Select Target Column", df.columns)
 
-    # Problem Type
-    problem_type = st.sidebar.radio("Problem Type", ("Classification", "Regression"), index=1)  # Default to Regression
+    # 🌟 Auto-detect Problem Type 🌟
+    unique_target_values = df[target_col].nunique()
+    if unique_target_values <= 50:  # You can adjust this threshold
+        problem_type = "Classification"
+        st.sidebar.info("🎯 Auto-detected Problem Type: Classification")
+    else:
+        problem_type = "Regression"
+        st.sidebar.info("🎯 Auto-detected Problem Type: Regression")
 
     # Feature Selection
     features = st.sidebar.multiselect(
@@ -28,12 +90,26 @@
             X[col] = X[col].fillna(X[col].mode()[0])
 
     if y.isnull().sum() > 0:
-        y = y.fillna(y.mean()) # Always fill with mean for regression
+        if problem_type == "Regression":
+            y = y.fillna(y.mean())
+        else:
+            y = y.fillna(y.mode()[0])
 
     y = pd.to_numeric(y, errors='coerce')
     if y.isnull().sum() > 0:
-        y = y.fillna(y.mean())
-    y = y.astype(float)  # Ensure y is float for regression
+        if problem_type == "Regression":
+            y = y.fillna(y.mean())
+        else:
+            y = y.fillna(y.mode()[0])
+
+    if problem_type == "Classification":
+        unique_classes = sorted(y.unique())
+        class_mapping = {cls: i for i, cls in enumerate(unique_classes)}
+        y = y.map(class_mapping)
+        y = y.astype(int)
+        st.write("Class Mapping:", class_mapping)  # Debugging
+    else:
+        y = y.astype(float)
 
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
@@ -53,12 +129,21 @@
     # ✅ Smart Cross Validation Handling
     use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True, key="use_cv")
     if use_cv:
-        n_splits = min(5, len(y)) # Use KFold for regression
-        if n_splits < 2:
-            st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
-            use_cv = False
+        if problem_type == "Classification":
+            min_class_count = np.min(np.bincount(y.astype(int)))
+            n_splits = min(5, min_class_count)
+            if n_splits < 2:
+                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
+                use_cv = False
+            else:
+                kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
         else:
-            kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+            n_splits = min(5, len(y))
+            if n_splits < 2:
+                st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
+                use_cv = False
+            else:
+                kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
