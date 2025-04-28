@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + AutoML Pro+", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
 
 # Core Libraries
 import pandas as pd
@@ -23,11 +23,11 @@ from sklearn.metrics import accuracy_score, mean_squared_error, classification_r
 try:
     from xgboost import XGBClassifier, XGBRegressor, plot_importance
     xgb_installed = True
-except ImportError:
+except:
     xgb_installed = False
 
 # Title
-st.title("🤖 AI-Driven EDA + AutoML Pro+")
+st.title("🤖 AI-Driven EDA + Automated Machine Learning")
 st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
 
 # Upload CSV
@@ -40,20 +40,21 @@ if uploaded_file:
     st.write(df.head())
 
     if st.checkbox("Show Shape"):
-        st.write(df.shape)
+        st.write(f"Dataset Shape: {df.shape}")
 
     if st.checkbox("Show Summary Stats"):
         st.write(df.describe())
 
     if st.checkbox("Show Missing Values"):
-        st.write(df.isnull().sum())
+        missing = df.isnull().sum()
+        st.write(missing[missing > 0])
 
     if st.checkbox("Correlation Heatmap (Numerical Only)"):
         corr = df.select_dtypes(include=np.number).corr()
-        plt.figure(figsize=(10,8))
-        sns.heatmap(corr, annot=True, cmap="coolwarm")
-        st.pyplot(plt.gcf())
-        plt.clf()
+        fig, ax = plt.subplots(figsize=(10,8))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+        plt.close(fig)
 
     # Target Variable
     st.sidebar.header("🏷️ Define Target Variable")
@@ -73,19 +74,33 @@ if uploaded_file:
         num_features = st.sidebar.slider("Number of Top Features", 1, len(features), min(10, len(features)))
 
     # Preprocessing
-    X = df[features]
+    X = df[features].copy()
     y = df[target_col]
 
-    for col in X.select_dtypes(include="object").columns:
-        X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+    # 🔥 Missing Value Imputation for X
+    for col in X.columns:
+        if X[col].dtype in ['float64', 'int64']:
+            X[col] = X[col].fillna(X[col].mean())
+        else:
+            X[col] = X[col].fillna(X[col].mode()[0])
 
-    if y.dtype == 'object':
+    # 🔥 Missing Value Imputation for y
+    if y.isnull().sum() > 0:
+        if problem_type == "Regression":
+            y = y.fillna(y.mean())
+        else:
+            y = y.fillna(y.mode()[0])
+
+    for col in X.select_dtypes(include="object").columns:
+        le = LabelEncoder()
+        X[col] = le.fit_transform(X[col].astype(str))
+
+    if y.dtype == 'object' or y.dtype.name == 'category':
         y = LabelEncoder().fit_transform(y.astype(str))
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # 🚀 NEW: Fix missing and infinite values
     X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
 
     if auto_feature_select:
@@ -163,10 +178,10 @@ if uploaded_file:
         leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Score", ascending=(problem_type=="Regression"))
 
         st.subheader("🏆 Model Leaderboard")
-        st.dataframe(leaderboard_df)
+        st.dataframe(leaderboard_df.style.format({"Score": "{:.4f}"}))
 
-        csv = leaderboard_df.to_csv(index=False)
-        st.download_button("Download Leaderboard CSV", csv, "model_leaderboard.csv", "text/csv")
+        csv = leaderboard_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Leaderboard CSV", csv, "model_leaderboard.csv", "text/csv")
 
         best_model_name = leaderboard_df.iloc[0]['Model']
         st.success(f"🌟 Best Model: **{best_model_name}**")
@@ -181,17 +196,23 @@ if uploaded_file:
 
         if problem_type == "Classification":
             st.subheader("🔢 Confusion Matrix")
+            fig, ax = plt.subplots()
             cm = confusion_matrix(y_test, preds)
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-            disp.plot(cmap='Blues')
-            st.pyplot(plt.gcf())
-            plt.clf()
+            disp.plot(cmap='Blues', ax=ax)
+            st.pyplot(fig)
+            plt.close(fig)
 
             st.subheader("🔧 Classification Report")
             report = classification_report(y_test, preds, output_dict=True)
             st.dataframe(pd.DataFrame(report).transpose())
+        else:
+            st.subheader("📈 Regression Metrics")
+            rmse = np.sqrt(mean_squared_error(y_test, preds))
+            r2 = r2_score(y_test, preds)
+            st.write(f"**RMSE:** {rmse:.4f}")
+            st.write(f"**R² Score:** {r2:.4f}")
 
-        # Feature Importance
         if hasattr(best_model, 'feature_importances_'):
             st.subheader("🔍 Feature Importance")
             try:
@@ -201,11 +222,11 @@ if uploaded_file:
                 else:
                     feat_df = pd.DataFrame({'Feature': features, 'Importance': importances})
                 feat_df = feat_df.sort_values(by='Importance', ascending=False)
-                plt.figure(figsize=(10,6))
-                sns.barplot(x='Importance', y='Feature', data=feat_df)
-                st.pyplot(plt.gcf())
-                plt.clf()
+                fig, ax = plt.subplots(figsize=(10,6))
+                sns.barplot(x='Importance', y='Feature', data=feat_df, ax=ax)
+                st.pyplot(fig)
+                plt.close(fig)
             except Exception as e:
                 st.warning(f"Feature importance plotting failed: {e}")
 
-# END
+#END
