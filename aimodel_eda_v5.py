@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
+
 # Core Libraries
 import pandas as pd
 import numpy as np
@@ -21,7 +22,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error, classification_r
 try:
     from xgboost import XGBClassifier, XGBRegressor
     xgb_installed = True
-except:
+except ImportError:
     xgb_installed = False
 
 # Title
@@ -76,7 +77,7 @@ if uploaded_file:
     X = df[features].copy()
     y = df[target_col]
 
-    # 🔥 Imputation
+    # 🔥 Handle missing values
     for col in X.columns:
         if X[col].dtype in ['float64', 'int64']:
             X[col] = X[col].fillna(X[col].mean())
@@ -89,18 +90,20 @@ if uploaded_file:
         else:
             y = y.fillna(y.mode()[0])
 
-    y = pd.to_numeric(y, errors='coerce')
-    if y.isnull().sum() > 0:
-        if problem_type == "Regression":
-            y = y.fillna(y.mean())
+    # 🔥 Label Encoding for Classification
+    if problem_type == "Classification":
+        if y.dtype == 'object' or y.dtype.name == 'category':
+            le_y = LabelEncoder()
+            y = le_y.fit_transform(y)
         else:
-            y = y.fillna(y.mode()[0])
-    y = y.astype(float)
+            y = pd.to_numeric(y, errors='coerce').astype(int)
 
+    # 🔥 Ensure numeric features
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
 
+    # Standardization
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
@@ -112,11 +115,11 @@ if uploaded_file:
     test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20, key="test_size")
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size/100, random_state=42)
 
-    # ✅ Smart Cross Validation Handling
+    # ✅ Cross-Validation Handling
     use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True, key="use_cv")
     if use_cv:
         if problem_type == "Classification":
-            min_class_count = np.min(np.bincount(y.astype(int)))
+            min_class_count = np.min(np.bincount(y))
             n_splits = min(5, min_class_count)
             if n_splits < 2:
                 st.warning("⚠️ Not enough samples for Cross-Validation. Switching to train/test split only.")
@@ -177,6 +180,15 @@ if uploaded_file:
             if 'XGBoost' in model_name and xgb_installed:
                 model.set_params(learning_rate=xgb_learning_rate)
 
+            # 🔥 Handle XGBoost float32 requirement
+            if 'XGBoost' in model_name:
+                X_train_ = np.array(X_train, dtype=np.float32)
+                X_test_ = np.array(X_test, dtype=np.float32)
+                y_train_ = np.array(y_train, dtype=np.float32 if problem_type == "Regression" else np.int32)
+                y_test_ = np.array(y_test, dtype=np.float32 if problem_type == "Regression" else np.int32)
+            else:
+                X_train_, X_test_, y_train_, y_test_ = X_train, X_test, y_train, y_test
+
             if use_cv:
                 if problem_type == "Classification":
                     scores = cross_val_score(model, X_scaled, y, scoring='accuracy', cv=kfold)
@@ -184,12 +196,12 @@ if uploaded_file:
                     scores = cross_val_score(model, X_scaled, y, scoring='neg_root_mean_squared_error', cv=kfold)
                 score = np.mean(scores)
             else:
-                model.fit(X_train, y_train)
-                preds = model.predict(X_test)
+                model.fit(X_train_, y_train_)
+                preds = model.predict(X_test_)
                 if problem_type == "Classification":
-                    score = accuracy_score(y_test, preds)
+                    score = accuracy_score(y_test_, preds)
                 else:
-                    score = np.sqrt(mean_squared_error(y_test, preds))
+                    score = np.sqrt(mean_squared_error(y_test_, preds))
 
             leaderboard.append({"Model": model_name, "Score": score})
 
@@ -210,32 +222,34 @@ if uploaded_file:
         if 'XGBoost' in best_model_name and xgb_installed:
             best_model.set_params(learning_rate=xgb_learning_rate)
 
-        # 🔥 Stronger Special Handling for XGBoost before fitting
-        if 'XGBoost' in best_model_name and xgb_installed:
-            X_train = np.nan_to_num(np.array(X_train), nan=0.0, posinf=0.0, neginf=0.0)
-            X_test = np.nan_to_num(np.array(X_test), nan=0.0, posinf=0.0, neginf=0.0)
-            y_train = np.nan_to_num(np.array(y_train).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
-            y_test = np.nan_to_num(np.array(y_test).reshape(-1,), nan=0.0, posinf=0.0, neginf=0.0)
+        # 🔥 Handle data types again
+        if 'XGBoost' in best_model_name:
+            X_train_ = np.array(X_train, dtype=np.float32)
+            X_test_ = np.array(X_test, dtype=np.float32)
+            y_train_ = np.array(y_train, dtype=np.float32 if problem_type == "Regression" else np.int32)
+            y_test_ = np.array(y_test, dtype=np.float32 if problem_type == "Regression" else np.int32)
+        else:
+            X_train_, X_test_, y_train_, y_test_ = X_train, X_test, y_train, y_test
 
-        best_model.fit(X_train, y_train)
-        preds = best_model.predict(X_test)
+        best_model.fit(X_train_, y_train_)
+        preds = best_model.predict(X_test_)
 
         if problem_type == "Classification":
             st.subheader("🔢 Confusion Matrix")
             fig, ax = plt.subplots()
-            cm = confusion_matrix(y_test, preds)
+            cm = confusion_matrix(y_test_, preds)
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
             disp.plot(cmap='Blues', ax=ax)
             st.pyplot(fig)
             plt.close(fig)
 
             st.subheader("🔧 Classification Report")
-            report = classification_report(y_test, preds, output_dict=True)
+            report = classification_report(y_test_, preds, output_dict=True)
             st.dataframe(pd.DataFrame(report).transpose())
         else:
             st.subheader("📈 Regression Metrics")
-            rmse = np.sqrt(mean_squared_error(y_test, preds))
-            r2 = r2_score(y_test, preds)
+            rmse = np.sqrt(mean_squared_error(y_test_, preds))
+            r2 = r2_score(y_test_, preds)
             st.write(f"**RMSE:** {rmse:.4f}")
             st.write(f"**R² Score:** {r2:.4f}")
 
@@ -254,7 +268,3 @@ if uploaded_file:
                 plt.close(fig)
             except Exception as e:
                 st.warning(f"Feature importance plotting failed: {e}")
-
-# END
-
-
