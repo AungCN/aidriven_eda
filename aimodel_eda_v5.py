@@ -76,31 +76,18 @@ if uploaded_file:
     X = df[features]
     y = df[target_col]
 
-    # Handling Missing Values
-    for col in X.columns:
-        if X[col].dtype == 'object':
-            X[col] = X[col].fillna('missing')
-        else:
-            X[col] = X[col].fillna(X[col].median())
-
-    if y.isnull().sum() > 0:
-        if y.dtype == 'object':
-            y = y.fillna('missing')
-        else:
-            y = y.fillna(y.median())
-
-    # Encoding
     for col in X.select_dtypes(include="object").columns:
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
 
     if y.dtype == 'object':
         y = LabelEncoder().fit_transform(y.astype(str))
 
-    # Scaling
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # Auto Feature Selection
+    # 🚀 NEW: Fix missing and infinite values
+    X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+
     if auto_feature_select:
         selector = SelectKBest(score_func=f_classif if problem_type=="Classification" else f_regression, k=num_features)
         X_scaled = selector.fit_transform(X_scaled, y)
