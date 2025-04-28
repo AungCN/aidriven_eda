@@ -91,6 +91,15 @@ if uploaded_file:
         else:
             y = y.fillna(y.mode()[0])
 
+    # 🔥 Extra Cleaning Step for y to avoid cloud errors
+    y = pd.to_numeric(y, errors='coerce')
+    if y.isnull().sum() > 0:
+        if problem_type == "Regression":
+            y = y.fillna(y.mean())
+        else:
+            y = y.fillna(y.mode()[0])
+    y = y.astype(float)
+
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
