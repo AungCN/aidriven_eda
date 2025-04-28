@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-
 import streamlit as st
-st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning Models", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + AutoML Pro+", layout="wide")
 
 # Core Libraries
 import pandas as pd
@@ -24,11 +23,11 @@ from sklearn.metrics import accuracy_score, mean_squared_error, classification_r
 try:
     from xgboost import XGBClassifier, XGBRegressor, plot_importance
     xgb_installed = True
-except:
+except ImportError:
     xgb_installed = False
 
 # Title
-st.title("🤖 AI-Driven EDA + Automated ML Models")
+st.title("🤖 AI-Driven EDA + AutoML Pro+")
 st.markdown("Upload your dataset, explore EDA, and train multiple ML models with cross-validation and tuning!")
 
 # Upload CSV
@@ -53,7 +52,8 @@ if uploaded_file:
         corr = df.select_dtypes(include=np.number).corr()
         plt.figure(figsize=(10,8))
         sns.heatmap(corr, annot=True, cmap="coolwarm")
-        st.pyplot(plt)
+        st.pyplot(plt.gcf())
+        plt.clf()
 
     # Target Variable
     st.sidebar.header("🏷️ Define Target Variable")
@@ -63,7 +63,10 @@ if uploaded_file:
     problem_type = st.sidebar.radio("Problem Type", ("Classification", "Regression"))
 
     # Feature Selection
-    features = st.sidebar.multiselect("Select Feature Columns", [col for col in df.columns if col != target_col], default=[col for col in df.columns if col != target_col])
+    features = st.sidebar.multiselect(
+        "Select Feature Columns", [col for col in df.columns if col != target_col],
+        default=[col for col in df.columns if col != target_col]
+    )
 
     auto_feature_select = st.sidebar.checkbox("✨ Auto Select Top Features", value=False)
     if auto_feature_select:
@@ -73,15 +76,31 @@ if uploaded_file:
     X = df[features]
     y = df[target_col]
 
+    # Handling Missing Values
+    for col in X.columns:
+        if X[col].dtype == 'object':
+            X[col] = X[col].fillna('missing')
+        else:
+            X[col] = X[col].fillna(X[col].median())
+
+    if y.isnull().sum() > 0:
+        if y.dtype == 'object':
+            y = y.fillna('missing')
+        else:
+            y = y.fillna(y.median())
+
+    # Encoding
     for col in X.select_dtypes(include="object").columns:
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
 
     if y.dtype == 'object':
         y = LabelEncoder().fit_transform(y.astype(str))
 
+    # Scaling
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
+    # Auto Feature Selection
     if auto_feature_select:
         selector = SelectKBest(score_func=f_classif if problem_type=="Classification" else f_regression, k=num_features)
         X_scaled = selector.fit_transform(X_scaled, y)
@@ -96,7 +115,7 @@ if uploaded_file:
 
     if problem_type == "Classification":
         available_models = {
-            'Logistic Regression': LogisticRegression(),
+            'Logistic Regression': LogisticRegression(max_iter=500),
             'K-Nearest Neighbors': KNeighborsClassifier(),
             'Decision Tree': DecisionTreeClassifier(),
             'Random Forest': RandomForestClassifier()
@@ -112,16 +131,13 @@ if uploaded_file:
         if xgb_installed:
             available_models['XGBoost Regressor'] = XGBRegressor()
 
-    # Cross-Validation Option
     use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True)
 
-    # Manual Hyperparameter Tuning
     st.sidebar.header(":gear: Hyperparameter Tuning")
     rf_n_estimators = st.sidebar.slider("Random Forest: n_estimators", 50, 500, 100, step=10)
     if xgb_installed:
         xgb_learning_rate = st.sidebar.slider("XGBoost: learning_rate", 0.01, 0.5, 0.1, step=0.01)
 
-    # Train Models
     train_all = st.sidebar.checkbox("🚀 Train All Models", value=True)
 
     selected_models = []
@@ -129,37 +145,19 @@ if uploaded_file:
         if train_all or st.sidebar.checkbox(model_name, value=True):
             selected_models.append(model_name)
 
-    # Training
     if st.sidebar.button("Train Selected Models"):
         leaderboard = []
 
         for model_name in selected_models:
             model = available_models[model_name]
 
-            # Apply tuned parameters
             if 'Random Forest' in model_name:
                 model.set_params(n_estimators=rf_n_estimators)
             if 'XGBoost' in model_name and xgb_installed:
                 model.set_params(learning_rate=xgb_learning_rate)
 
             if use_cv:
-                if problem_type == "Classification":
-                    min_class_count = np.min(np.bincount(y))
-                    n_splits = min(5, min_class_count)
-                    if n_splits < 2:
-                        st.warning("⚠️ Not enough samples for cross-validation. Switching to train/test split only.")
-                        use_cv = False
-                    else:
-                        kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-                else:
-                    n_splits = min(5, len(y))
-                    if n_splits < 2:
-                        st.warning("⚠️ Not enough samples for cross-validation. Switching to train/test split only.")
-                        use_cv = False
-                    else:
-                        kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-            if use_cv:
+                kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42) if problem_type == "Classification" else KFold(n_splits=5, shuffle=True, random_state=42)
                 if problem_type == "Classification":
                     scores = cross_val_score(model, X_scaled, y, scoring='accuracy', cv=kfold)
                 else:
@@ -177,19 +175,15 @@ if uploaded_file:
 
         leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Score", ascending=(problem_type=="Regression"))
 
-        # Show Leaderboard
         st.subheader("🏆 Model Leaderboard")
         st.dataframe(leaderboard_df)
 
-        # Download CSV
         csv = leaderboard_df.to_csv(index=False)
         st.download_button("Download Leaderboard CSV", csv, "model_leaderboard.csv", "text/csv")
 
-        # Best Model Highlight
         best_model_name = leaderboard_df.iloc[0]['Model']
         st.success(f"🌟 Best Model: **{best_model_name}**")
 
-        # Retrain Best Model for Report
         best_model = available_models[best_model_name]
         if 'Random Forest' in best_model_name:
             best_model.set_params(n_estimators=rf_n_estimators)
@@ -204,13 +198,14 @@ if uploaded_file:
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
             disp.plot(cmap='Blues')
             st.pyplot(plt.gcf())
+            plt.clf()
 
             st.subheader("🔧 Classification Report")
             report = classification_report(y_test, preds, output_dict=True)
             st.dataframe(pd.DataFrame(report).transpose())
 
         # Feature Importance
-        if 'Random Forest' in best_model_name or 'XGBoost' in best_model_name or 'Decision Tree' in best_model_name:
+        if hasattr(best_model, 'feature_importances_'):
             st.subheader("🔍 Feature Importance")
             try:
                 importances = best_model.feature_importances_
@@ -221,8 +216,9 @@ if uploaded_file:
                 feat_df = feat_df.sort_values(by='Importance', ascending=False)
                 plt.figure(figsize=(10,6))
                 sns.barplot(x='Importance', y='Feature', data=feat_df)
-                st.pyplot(plt)
-            except:
-                st.warning("Feature importance not available for this model.")
+                st.pyplot(plt.gcf())
+                plt.clf()
+            except Exception as e:
+                st.warning(f"Feature importance plotting failed: {e}")
 
 # END
