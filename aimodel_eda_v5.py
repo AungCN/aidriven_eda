@@ -73,11 +73,11 @@ if uploaded_file:
     if auto_feature_select:
         num_features = st.sidebar.slider("Number of Top Features", 1, len(features), min(10, len(features)), key="num_features")
 
-    # Preprocessing
+   # Preprocessing
     X = df[features].copy()
     y = df[target_col]
 
-    # 🔥 Handle missing values
+    # 🔥 Imputation
     for col in X.columns:
         if X[col].dtype in ['float64', 'int64']:
             X[col] = X[col].fillna(X[col].mean())
@@ -90,20 +90,28 @@ if uploaded_file:
         else:
             y = y.fillna(y.mode()[0])
 
-    # 🔥 Label Encoding for Classification
-    if problem_type == "Classification":
-        if y.dtype == 'object' or y.dtype.name == 'category':
-            le_y = LabelEncoder()
-            y = le_y.fit_transform(y)
+    y = pd.to_numeric(y, errors='coerce')
+    if y.isnull().sum() > 0:
+        if problem_type == "Regression":
+            y = y.fillna(y.mean())
         else:
-            y = pd.to_numeric(y, errors='coerce').astype(int)
+            y = y.fillna(y.mode()[0])
+    y = y.astype(float)
 
-    # 🔥 Ensure numeric features
+    # 🌟 Remap Target Variable for Classification 🌟
+    if problem_type == "Classification":
+        unique_classes = sorted(y.unique())  # Get unique classes in sorted order
+        class_mapping = {cls: i for i, cls in enumerate(unique_classes)}  # Create a mapping
+        y = y.map(class_mapping)  # Apply the mapping
+        y = y.astype(int)  # Ensure y is integers
+        st.write("Class Mapping:", class_mapping)  # Debug: See the mapping
+    else:
+        y = y.astype(float) # Ensure y is float for regression
+
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
 
-    # Standardization
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
