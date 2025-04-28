@@ -131,9 +131,13 @@ if uploaded_file:
             else:
                 kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
+    # (your current code above remains unchanged)
+
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
+
     available_models = {}
+
     if problem_type == "Classification":
         available_models = {
             'Logistic Regression': LogisticRegression(max_iter=500),
@@ -153,6 +157,7 @@ if uploaded_file:
             available_models['XGBoost Regressor'] = XGBRegressor()
 
     train_all = st.sidebar.checkbox("🚀 Train All Models", value=True, key="train_all")
+
     selected_models = []
     for model_name in available_models.keys():
         if train_all or st.sidebar.checkbox(model_name, value=True, key=model_name):
@@ -165,6 +170,7 @@ if uploaded_file:
 
     if st.sidebar.button("Train Selected Models", key="train_models"):
         leaderboard = []
+
         for model_name in selected_models:
             model = available_models[model_name]
 
@@ -190,6 +196,7 @@ if uploaded_file:
             leaderboard.append({"Model": model_name, "Score": score})
 
         leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Score", ascending=(problem_type=="Regression"))
+
         st.subheader("🏆 Model Leaderboard")
         st.dataframe(leaderboard_df.style.format({"Score": "{:.4f}"}))
 
@@ -204,6 +211,13 @@ if uploaded_file:
             best_model.set_params(n_estimators=rf_n_estimators)
         if 'XGBoost' in best_model_name and xgb_installed:
             best_model.set_params(learning_rate=xgb_learning_rate)
+
+        # 🔥 Special Handling for XGBoost before fitting
+        if 'XGBoost' in best_model_name and xgb_installed:
+            X_train = np.nan_to_num(X_train, nan=0.0, posinf=0.0, neginf=0.0)
+            X_test = np.nan_to_num(X_test, nan=0.0, posinf=0.0, neginf=0.0)
+            y_train = np.nan_to_num(y_train, nan=0.0, posinf=0.0, neginf=0.0)
+            y_test = np.nan_to_num(y_test, nan=0.0, posinf=0.0, neginf=0.0)
 
         best_model.fit(X_train, y_train)
         preds = best_model.predict(X_test)
@@ -244,3 +258,4 @@ if uploaded_file:
                 st.warning(f"Feature importance plotting failed: {e}")
 
 # END
+
