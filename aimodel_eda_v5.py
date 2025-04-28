@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
-
 # Core Libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from io import StringIO
 
 # ML Models
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, KFold
@@ -21,7 +19,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error, classification_r
 
 # Optional XGBoost
 try:
-    from xgboost import XGBClassifier, XGBRegressor, plot_importance
+    from xgboost import XGBClassifier, XGBRegressor
     xgb_installed = True
 except:
     xgb_installed = False
@@ -39,17 +37,17 @@ if uploaded_file:
     st.subheader("📊 Exploratory Data Analysis")
     st.write(df.head())
 
-    if st.checkbox("Show Shape"):
+    if st.checkbox("Show Shape", key="shape"):
         st.write(f"Dataset Shape: {df.shape}")
 
-    if st.checkbox("Show Summary Stats"):
+    if st.checkbox("Show Summary Stats", key="summary"):
         st.write(df.describe())
 
-    if st.checkbox("Show Missing Values"):
+    if st.checkbox("Show Missing Values", key="missing"):
         missing = df.isnull().sum()
         st.write(missing[missing > 0])
 
-    if st.checkbox("Correlation Heatmap (Numerical Only)"):
+    if st.checkbox("Correlation Heatmap (Numerical Only)", key="heatmap"):
         corr = df.select_dtypes(include=np.number).corr()
         fig, ax = plt.subplots(figsize=(10,8))
         sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
@@ -66,32 +64,31 @@ if uploaded_file:
     # Feature Selection
     features = st.sidebar.multiselect(
         "Select Feature Columns", [col for col in df.columns if col != target_col],
-        default=[col for col in df.columns if col != target_col]
+        default=[col for col in df.columns if col != target_col],
+        key="feature_select"
     )
 
-    auto_feature_select = st.sidebar.checkbox("✨ Auto Select Top Features", value=False)
+    auto_feature_select = st.sidebar.checkbox("✨ Auto Select Top Features", value=False, key="auto_select")
     if auto_feature_select:
-        num_features = st.sidebar.slider("Number of Top Features", 1, len(features), min(10, len(features)))
+        num_features = st.sidebar.slider("Number of Top Features", 1, len(features), min(10, len(features)), key="num_features")
 
     # Preprocessing
     X = df[features].copy()
     y = df[target_col]
 
-    # 🔥 Missing Value Imputation for X
+    # 🔥 Imputation
     for col in X.columns:
         if X[col].dtype in ['float64', 'int64']:
             X[col] = X[col].fillna(X[col].mean())
         else:
             X[col] = X[col].fillna(X[col].mode()[0])
 
-    # 🔥 Missing Value Imputation for y
     if y.isnull().sum() > 0:
         if problem_type == "Regression":
             y = y.fillna(y.mean())
         else:
             y = y.fillna(y.mode()[0])
 
-    # 🔥 Extra Cleaning Step for y to avoid cloud errors
     y = pd.to_numeric(y, errors='coerce')
     if y.isnull().sum() > 0:
         if problem_type == "Regression":
@@ -104,24 +101,19 @@ if uploaded_file:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
 
-    if y.dtype == 'object' or y.dtype.name == 'category':
-        y = LabelEncoder().fit_transform(y.astype(str))
-
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
     X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
 
     if auto_feature_select:
         selector = SelectKBest(score_func=f_classif if problem_type=="Classification" else f_regression, k=num_features)
         X_scaled = selector.fit_transform(X_scaled, y)
 
-    test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20)
+    test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20, key="test_size")
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size/100, random_state=42)
 
     # ✅ Smart Cross Validation Handling
-    use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True)
-
+    use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True, key="use_cv")
     if use_cv:
         if problem_type == "Classification":
             min_class_count = np.min(np.bincount(y.astype(int)))
@@ -139,12 +131,9 @@ if uploaded_file:
             else:
                 kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-
     # Model Selection
     st.sidebar.header("⚙️ Model Selection")
-
     available_models = {}
-
     if problem_type == "Classification":
         available_models = {
             'Logistic Regression': LogisticRegression(max_iter=500),
@@ -163,23 +152,19 @@ if uploaded_file:
         if xgb_installed:
             available_models['XGBoost Regressor'] = XGBRegressor()
 
-    use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True)
-
-    st.sidebar.header(":gear: Hyperparameter Tuning")
-    rf_n_estimators = st.sidebar.slider("Random Forest: n_estimators", 50, 500, 100, step=10)
-    if xgb_installed:
-        xgb_learning_rate = st.sidebar.slider("XGBoost: learning_rate", 0.01, 0.5, 0.1, step=0.01)
-
-    train_all = st.sidebar.checkbox("🚀 Train All Models", value=True)
-
+    train_all = st.sidebar.checkbox("🚀 Train All Models", value=True, key="train_all")
     selected_models = []
     for model_name in available_models.keys():
-        if train_all or st.sidebar.checkbox(model_name, value=True):
+        if train_all or st.sidebar.checkbox(model_name, value=True, key=model_name):
             selected_models.append(model_name)
 
-    if st.sidebar.button("Train Selected Models"):
-        leaderboard = []
+    st.sidebar.header(":gear: Hyperparameter Tuning")
+    rf_n_estimators = st.sidebar.slider("Random Forest: n_estimators", 50, 500, 100, step=10, key="rf_n_estimators")
+    if xgb_installed:
+        xgb_learning_rate = st.sidebar.slider("XGBoost: learning_rate", 0.01, 0.5, 0.1, step=0.01, key="xgb_learning_rate")
 
+    if st.sidebar.button("Train Selected Models", key="train_models"):
+        leaderboard = []
         for model_name in selected_models:
             model = available_models[model_name]
 
@@ -189,7 +174,6 @@ if uploaded_file:
                 model.set_params(learning_rate=xgb_learning_rate)
 
             if use_cv:
-                kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42) if problem_type == "Classification" else KFold(n_splits=5, shuffle=True, random_state=42)
                 if problem_type == "Classification":
                     scores = cross_val_score(model, X_scaled, y, scoring='accuracy', cv=kfold)
                 else:
@@ -206,12 +190,11 @@ if uploaded_file:
             leaderboard.append({"Model": model_name, "Score": score})
 
         leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Score", ascending=(problem_type=="Regression"))
-
         st.subheader("🏆 Model Leaderboard")
         st.dataframe(leaderboard_df.style.format({"Score": "{:.4f}"}))
 
         csv = leaderboard_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Leaderboard CSV", csv, "model_leaderboard.csv", "text/csv")
+        st.download_button("📥 Download Leaderboard CSV", csv, "model_leaderboard.csv", "text/csv", key="download_csv")
 
         best_model_name = leaderboard_df.iloc[0]['Model']
         st.success(f"🌟 Best Model: **{best_model_name}**")
@@ -221,6 +204,7 @@ if uploaded_file:
             best_model.set_params(n_estimators=rf_n_estimators)
         if 'XGBoost' in best_model_name and xgb_installed:
             best_model.set_params(learning_rate=xgb_learning_rate)
+
         best_model.fit(X_train, y_train)
         preds = best_model.predict(X_test)
 
@@ -259,4 +243,4 @@ if uploaded_file:
             except Exception as e:
                 st.warning(f"Feature importance plotting failed: {e}")
 
-#END
+# END
