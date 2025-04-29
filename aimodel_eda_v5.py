@@ -26,7 +26,7 @@ try:
 except ImportError:
     lgb_installed = False
 
-st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning", layout="wide")
+st.set_page_config(page_title="AI-Driven EDA + Automated ML", layout="wide")
 st.title("🤖 AI-Driven EDA + Automated ML")
 st.markdown("Upload your dataset, explore EDA, and train ML models with cross-validation and tuning!")
 
@@ -63,6 +63,7 @@ if uploaded_file:
     X = df[features].copy()
     y = df[target_col].copy()
 
+    # Fill missing values
     for col in X.columns:
         if X[col].dtype in ["float64", "int64"]:
             X[col] = X[col].fillna(X[col].mean())
@@ -72,9 +73,17 @@ if uploaded_file:
     if y.isnull().sum() > 0:
         y = y.fillna(y.mode()[0])
 
+    # Encode categorical features
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
         X[col] = le.fit_transform(X[col].astype(str))
+
+    # Encode categorical target if classification
+    le_y = None
+    if problem_type == "Classification":
+        if y.dtype == 'object' or y.dtype.name == 'category':
+            le_y = LabelEncoder()
+            y = le_y.fit_transform(y)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -166,17 +175,22 @@ if uploaded_file:
 
             best_model = joblib.load(f"{best_model_name.replace(' ', '_')}.pkl")
             best_model.fit(X_train, y_train)
+
             preds = best_model.predict(X_test)
+            y_test_display = y_test
+            if problem_type == "Classification" and le_y is not None:
+                preds = le_y.inverse_transform(preds)
+                y_test_display = le_y.inverse_transform(y_test)
 
             if problem_type == "Classification":
                 st.subheader("📊 Confusion Matrix")
                 fig, ax = plt.subplots()
-                cm = confusion_matrix(y_test, preds)
+                cm = confusion_matrix(y_test_display, preds)
                 ConfusionMatrixDisplay(cm).plot(cmap='Blues', ax=ax)
                 st.pyplot(fig)
 
                 st.subheader("Classification Report")
-                report = classification_report(y_test, preds, output_dict=True)
+                report = classification_report(y_test_display, preds, output_dict=True)
                 st.dataframe(pd.DataFrame(report).transpose())
             else:
                 st.subheader("📈 Regression Report")
