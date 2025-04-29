@@ -58,14 +58,8 @@ if uploaded_file:
     st.sidebar.header("🏷️ Define Target Variable")
     target_col = st.sidebar.selectbox("Select Target Column", df.columns)
 
-    # 🌟 Auto-detect Problem Type 🌟
-    unique_target_values = df[target_col].nunique()
-    if unique_target_values <= 50:  # You can adjust this threshold
-        problem_type = "Classification"
-        st.sidebar.info("🎯 Auto-detected Problem Type: Classification")
-    else:
-        problem_type = "Regression"
-        st.sidebar.info("🎯 Auto-detected Problem Type: Regression")
+    # Problem Type
+    problem_type = st.sidebar.radio("Problem Type", ("Classification", "Regression"))
 
     # Feature Selection
     features = st.sidebar.multiselect(
@@ -101,15 +95,7 @@ if uploaded_file:
             y = y.fillna(y.mean())
         else:
             y = y.fillna(y.mode()[0])
-
-    if problem_type == "Classification":
-        unique_classes = sorted(y.unique())
-        class_mapping = {cls: i for i, cls in enumerate(unique_classes)}
-        y = y.map(class_mapping)
-        y = y.astype(int)
-        st.write("Class Mapping:", class_mapping)  # Debugging
-    else:
-        y = y.astype(float)
+    y = y.astype(float)
 
     for col in X.select_dtypes(include="object").columns:
         le = LabelEncoder()
@@ -268,4 +254,5 @@ if uploaded_file:
                 plt.close(fig)
             except Exception as e:
                 st.warning(f"Feature importance plotting failed: {e}")
-#end
+
+# END
