@@ -87,14 +87,20 @@ if uploaded_file:
         if problem_type == "Regression":
             y = y.fillna(y.mean())
         else:
-            y = y.fillna(y.mode()[0])
+            if not y.mode().empty:
+                y = y.fillna(y.mode()[0])
+            else:
+                y = y.fillna(0)
 
     y = pd.to_numeric(y, errors='coerce')
     if y.isnull().sum() > 0:
         if problem_type == "Regression":
             y = y.fillna(y.mean())
         else:
-            y = y.fillna(y.mode()[0])
+            if not y.mode().empty:
+                y = y.fillna(y.mode()[0])
+            else:
+                y = y.fillna(0)
     y = y.astype(float)
 
     for col in X.select_dtypes(include="object").columns:
