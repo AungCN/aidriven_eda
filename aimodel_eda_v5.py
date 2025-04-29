@@ -27,7 +27,7 @@ except ImportError:
     lgb_installed = False
 
 st.set_page_config(page_title="AI-Driven EDA + Automated Machine Learning", layout="wide")
-st.title("🤖 AI-Driven EDA + AutoML")
+st.title("🤖 AI-Driven EDA + Automated ML")
 st.markdown("Upload your dataset, explore EDA, and train ML models with cross-validation and tuning!")
 
 uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
