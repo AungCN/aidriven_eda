@@ -118,6 +118,12 @@ if uploaded_file:
     test_size = st.sidebar.slider("Test Size (%)", 10, 50, 20, key="test_size")
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size/100, random_state=42)
 
+    # Safety Check: Ensure at least 2 classes for classification
+    if problem_type == "Classification" and len(np.unique(y_train)) < 2:
+        st.error("🚫 Only one class found in target after train/test split. Cannot train classification models.")
+        st.stop()
+
+
     # ✅ Smart Cross Validation Handling
     use_cv = st.sidebar.checkbox("🏋️ Use 5-Fold Cross-Validation", value=True, key="use_cv")
     if use_cv:
